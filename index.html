@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vizualizare fenomen de bătăi</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f8fafc;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            width: 90%;
+            max-width: 1000px;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        h2 {
+            text-align: center;
+            color: #1e293b;
+            font-weight: normal;
+        }
+        canvas {
+            width: 100% !important;
+            height: 500px !important;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Evoluția tensiunii pe condensator (circuit LC neamortizat)</h2>
+    <canvas id="graficBatai"></canvas>
+</div>
+
+<script>
+    const eticheteTimp = [];
+    const valoriTensiune = [];
+
+    // Calculăm datele pentru intervalul 0 - 2.5 secunde
+    for (let t = 0; t <= 2.5; t += 0.005) {
+        // Expresia tensiunii: u_C(t) = 100*cos(21.21*t) - 100*cos(30*t)
+        const uTranzitoriu = 100 * Math.cos(21.21 * t);
+        const uPermanent = -100 * Math.cos(30 * t);
+        const uTotal = uTranzitoriu + uPermanent;
+        
+        eticheteTimp.push(t.toFixed(3));
+        valoriTensiune.push(uTotal.toFixed(2));
+    }
+
+    const ctx = document.getElementById('graficBatai').getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: eticheteTimp,
+            datasets: [{
+                label: 'Tensiune u_C (V)',
+                data: valoriTensiune,
+                borderColor: '#8b5cf6',
+                borderWidth: 2,
+                pointRadius: 0, 
+                pointHoverRadius: 5,
+                pointHoverBackgroundColor: '#6d28d9',
+                fill: false,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Timp (s)',
+                        font: { size: 14 }
+                    },
+                    ticks: {
+                        maxTicksLimit: 20
+                    }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Tensiune (V)',
+                        font: { size: 14 }
+                    },
+                    min: -220,
+                    max: 220
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.parsed.y + ' V';
+                        }
+                    }
+                }
+            }
+        }
+    });
+</script>
+
+</body>
+</html>

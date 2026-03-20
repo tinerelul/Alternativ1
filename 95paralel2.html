@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulare interactivă a fenomenului de bătăi</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f8fafc;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            width: 90%;
+            max-width: 1000px;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        h2 {
+            text-align: center;
+            color: #1e293b;
+            font-weight: normal;
+            margin-bottom: 20px;
+        }
+        .controls {
+            background-color: #f1f5f9;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        input[type=range] {
+            flex-grow: 1;
+            cursor: pointer;
+        }
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            background-color: #e2e8f0;
+            padding: 10px;
+            border-radius: 6px;
+            font-weight: bold;
+            color: #334155;
+        }
+        .highlight {
+            color: #0ea5e9;
+        }
+        .chart-container {
+            position: relative;
+            height: 500px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Analiza interactivă a circuitului LC (modificarea capacității)</h2>
+    
+    <div class="controls">
+        <div class="control-group">
+            <label for="sliderCapacitate">Capacitatea condensatorului (C):</label>
+            <input type="range" id="sliderCapacitate" min="2" max="25" step="0.1" value="11.1">
+            <span id="valoareCapacitate" style="font-weight: bold; min-width: 60px;">11.1 mF</span>
+        </div>
+        <div class="stats">
+            <span>Pulsația sursei (fixă): <span class="highlight">30.00 rad/s</span></span>
+            <span>Pulsația proprie (ω₀): <span id="valoarePulsatie" class="highlight">21.21 rad/s</span></span>
+        </div>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="graficInteractiv"></canvas>
+    </div>
+</div>
+
+<script>
+    // Configurația inițială
+    const inductanta = 0.2; // Henry
+    const pulsatieSursa = 30; // rad/s
+    const amplitudine = 100; // Volți
+    const timpMax = 3.5; // secunde
+    const pasTimp = 0.005;
+
+    // Elementele din DOM
+    const sliderC = document.getElementById('sliderCapacitate');
+    const labelC = document.getElementById('valoareCapacitate');
+    const labelPulsatie = document.getElementById('valoarePulsatie');
+    const ctx = document.getElementById('graficInteractiv').getContext('2d');
+
+    // Funcția care generează datele matematice pe baza capacității curente
+    function genereazaDate(capacitate_mF) {
+        const c_farazi = capacitate_mF / 1000;
+        const pulsatieProprie = 1 / Math.sqrt(inductanta * c_farazi);
+        
+        const eticheteTimp = [];
+        const valoriTensiune = [];
+
+        for (let t = 0; t <= timpMax; t += pasTimp) {
+            // Formula: u_C(t) = 100*cos(ω₀*t) - 100*cos(30*t)
+            const u = amplitudine * Math.cos(pulsatieProprie * t) - amplitudine * Math.cos(pulsatieSursa * t);
+            
+            eticheteTimp.push(t.toFixed(3));
+            valoriTensiune.push(u.toFixed(2));
+        }
+
+        return { eticheteTimp, valoriTensiune, pulsatieProprie };
+    }
+
+    // Inițializarea primului set de date (pentru 11.1 mF)
+    let dateInitiale = genereazaDate(parseFloat(sliderC.value));
+
+    // Crearea instanței graficului
+    const grafic = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: dateInitiale.eticheteTimp,
+            datasets: [{
+                label: 'Tensiune u_C (V)',
+                data: dateInitiale.valoriTensiune,
+                borderColor: '#0ea5e9',
+                borderWidth: 2,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                fill: false,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: {
+                duration: 0 // Oprim animația implicită pentru a face glisorul foarte fluid
+            },
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            scales: {
+                x: {
+                    title: { display: true, text: 'Timp (s)', font: { size: 14 } },
+                    ticks: { maxTicksLimit: 15 }
+                },
+                y: {
+                    title: { display: true, text: 'Tensiune (V)', font: { size: 14 } },
+                    min: -220,
+                    max: 220
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) { return context.parsed.y + ' V'; }
+                    }
+                }
+            }
+        }
+    });
+
+    // Evenimentul declanșat la mișcarea glisorului
+    sliderC.addEventListener('input', function() {
+        const valoareNouaC = parseFloat(this.value);
+        
+        // Actualizăm textul de pe ecran
+        labelC.textContent = valoareNouaC.toFixed(1) + ' mF';
+        
+        // Recalculăm funcția matematică
+        const dateNoi = genereazaDate(valoareNouaC);
+        
+        // Actualizăm pulsația afișată
+        labelPulsatie.textContent = dateNoi.pulsatieProprie.toFixed(2) + ' rad/s';
+        
+        // Trimitem noile date către grafic și îl redesenăm
+        grafic.data.datasets[0].data = dateNoi.valoriTensiune;
+        grafic.update();
+    });
+</script>
+
+</body>
+</html>
