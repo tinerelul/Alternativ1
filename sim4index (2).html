@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <title>Tensiunea la Bornele Condensatorului</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #121212; color: #eee; padding: 20px; }
+        .card { max-width: 900px; margin: auto; background: #1e1e1e; padding: 20px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+        .header { text-align: center; margin-bottom: 20px; }
+        .value-box { display: flex; justify-content: space-around; margin-bottom: 20px; padding: 15px; background: #252525; border-radius: 8px; border-left: 4px solid #00e5ff; }
+        .value { color: #00e5ff; font-weight: bold; font-size: 1.2em; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div class="header">
+        <h2>Analiza Tensiunii la Bornele Condensatorului</h2>
+        <p>Regim Tranzitoriu vs. Regim Permanent ($R = 150 \Omega$)</p>
+    </div>
+
+    <div class="value-box">
+        <div>Tensiune Extremă (Vârf): <span class="value" id="peakDisplay">--</span> V</div>
+        <div>Amplitudine Stabilizată: <span class="value">21.21</span> V</div>
+    </div>
+
+    <canvas id="capacitorChart" height="400"></canvas>
+</div>
+
+<script>
+    const L = 1.0, C = 100e-6, R = 150.0, Um = 90.0, w = 200.0;
+    const dt = 0.0002, tMax = 0.3;
+    
+    let t = 0, uc = 0, duc = 0, peak = 0;
+    const labels = [], dataTranzitoriu = [], dataPermanent = [];
+
+    // Rezolvare numerică RK4
+    function f(t, u, du) { return (Um * Math.cos(w * t) - R * C * du - u) / (L * C); }
+
+    while (t <= tMax) {
+        labels.push(t.toFixed(3));
+        dataTranzitoriu.push(uc);
+        
+        // Calcul tensiune regim permanent (teoretic) pentru comparație
+        // u_perm = 15*sqrt(2) * cos(200t - 3pi/4)
+        let uPerm = 21.21 * Math.cos(200 * t - (3 * Math.PI / 4));
+        dataPermanent.push(uPerm);
+
+        if (Math.abs(uc) > peak) peak = Math.abs(uc);
+
+        let k1u = duc, k1d = f(t, uc, duc);
+        let k2u = duc + 0.5*dt*k1d, k2d = f(t + 0.5*dt, uc + 0.5*dt*k1u, duc + 0.5*dt*k1d);
+        let k3u = duc + 0.5*dt*k2d, k3d = f(t + 0.5*dt, uc + 0.5*dt*k2u, duc + 0.5*dt*k2d);
+        let k4u = duc + dt*k3d, k4d = f(t + dt, uc + dt*k3u, duc + dt*k3d);
+
+        uc += (dt/6)*(k1u + 2*k2u + 2*k3u + k4u);
+        duc += (dt/6)*(k1d + 2*k2d + 2*k3d + k4d);
+        t += dt;
+    }
+
+    document.getElementById('peakDisplay').innerText = peak.toFixed(2);
+
+    new Chart(document.getElementById('capacitorChart'), {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Tensiune Reală (Tranzitoriu)',
+                    data: dataTranzitoriu,
+                    borderColor: '#00e5ff',
+                    borderWidth: 2,
+                    pointRadius: 0
+                },
+                {
+                    label: 'Anvelopă Regim Permanent',
+                    data: dataPermanent,
+                    borderColor: 'rgba(255, 255, 255, 0.2)',
+                    borderDash: [5, 5],
+                    pointRadius: 0
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: { title: { display: true, text: 'Timp (s)' }, grid: { color: '#333' } },
+                y: { title: { display: true, text: 'Tensiune (V)' }, grid: { color: '#333' }, min: -30, max: 30 }
+            },
+            plugins: { legend: { labels: { color: '#eee' } } }
+        }
+    });
+</script>
+</body>
+</html>

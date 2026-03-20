@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulare regim tranzitoriu RLC</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background-color: #1e1e1e;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+        }
+        h1 {
+            text-align: center;
+            font-size: 1.6em;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        .chart-wrapper {
+            position: relative;
+            height: 500px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Tensiunea tranzitorie pe condensator în circuitul RLC serie</h1>
+        <div class="chart-wrapper">
+            <canvas id="rlcChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // Funcție pentru rezolvarea numerică a circuitului folosind metoda Runge-Kutta 4
+        function simuleazaRLC(R, tMax, dt) {
+            const L = 1.0;          // Inductanța (H)
+            const C = 100e-6;       // Capacitatea (F)
+            const Um = 90.0;        // Amplitudinea tensiunii (V)
+            const w = 200.0;        // Pulsația (rad/s)
+
+            let t = 0;
+            let uc = 0;             // Tensiunea inițială pe condensator
+            let duc = 0;            // Derivata inițială a tensiunii (proporțională cu curentul)
+
+            const timpi = [];
+            const tensiuni = [];
+
+            // Ecuația diferențială: d2uc/dt2 = f(t, uc, duc)
+            function f(t, uc, duc) {
+                return (Um * Math.cos(w * t) - R * C * duc - uc) / (L * C);
+            }
+
+            while (t <= tMax) {
+                timpi.push(parseFloat(t.toFixed(4)));
+                tensiuni.push(uc);
+
+                // Algoritmul RK4
+                let k1_uc = duc;
+                let k1_duc = f(t, uc, duc);
+
+                let k2_uc = duc + 0.5 * dt * k1_duc;
+                let k2_duc = f(t + 0.5 * dt, uc + 0.5 * dt * k1_uc, duc + 0.5 * dt * k1_duc);
+
+                let k3_uc = duc + 0.5 * dt * k2_duc;
+                let k3_duc = f(t + 0.5 * dt, uc + 0.5 * dt * k2_uc, duc + 0.5 * dt * k2_duc);
+
+                let k4_uc = duc + dt * k3_duc;
+                let k4_duc = f(t + dt, uc + dt * k3_uc, duc + dt * k3_duc);
+
+                uc += (dt / 6.0) * (k1_uc + 2 * k2_uc + 2 * k3_uc + k4_uc);
+                duc += (dt / 6.0) * (k1_duc + 2 * k2_duc + 2 * k3_duc + k4_duc);
+                t += dt;
+            }
+
+            return { timpi, tensiuni };
+        }
+
+        // Rulăm simulările
+        const tMax = 0.4; // secunde
+        const dt = 0.0002; // pasul de integrare (fin pentru precizie)
+
+        const dateR150 = simuleazaRLC(150, tMax, dt); // Amortizare puternică
+        const dateR15 = simuleazaRLC(15, tMax, dt);   // Amortizare slabă
+
+        // Configurarea și desenarea graficului
+        const ctx = document.getElementById('rlcChart').getContext('2d');
+        Chart.defaults.color = '#a0a0a0';
+        Chart.defaults.font.family = "'Segoe UI', sans-serif";
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: dateR150.timpi,
+                datasets: [
+                    {
+                        label: 'R = 15 ohmi (Amortizare slabă)',
+                        data: dateR15.tensiuni,
+                        borderColor: '#00e5ff', // Albastru neon
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.1
+                    },
+                    {
+                        label: 'R = 150 ohmi (Amortizare puternică)',
+                        data: dateR150.tensiuni,
+                        borderColor: '#ff9100', // Portocaliu
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Timp (secunde)',
+                            font: { size: 14 }
+                        },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                        ticks: { maxTicksLimit: 10 }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Tensiune (V)',
+                            font: { size: 14 }
+                        },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                        min: -40,
+                        max: 40
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' V';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

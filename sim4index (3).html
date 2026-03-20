@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulator circuit RLC interactiv</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background-color: #1e1e1e;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+        }
+        h1 {
+            text-align: center;
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        .controls {
+            background-color: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .slider-group label {
+            font-size: 1.1em;
+            min-width: 150px;
+        }
+        input[type=range] {
+            flex-grow: 1;
+            cursor: pointer;
+        }
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #00e5ff;
+        }
+        .chart-wrapper {
+            position: relative;
+            height: 500px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Analiza regimului tranzitoriu (RLC serie)</h1>
+        
+        <div class="controls">
+            <div class="slider-group">
+                <label for="rSlider">Rezistență (R): <span id="rValue" style="color: #ff9100;">15</span> Ω</label>
+                <input type="range" id="rSlider" min="0" max="150" value="15" step="1">
+            </div>
+            <div class="stats">
+                <span>Amplitudine regim permanent (aprox): <span id="vPerm">29.85</span> V</span>
+                <span>Vârf tranzitoriu absolut: <span id="vPeak">32.21</span> V</span>
+            </div>
+        </div>
+
+        <div class="chart-wrapper">
+            <canvas id="rlcChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // Constantele circuitului
+        const L = 1.0;          // Inductanța (H)
+        const C = 100e-6;       // Capacitatea (F)
+        const Um = 90.0;        // Amplitudinea tensiunii (V)
+        const w = 200.0;        // Pulsația (rad/s)
+        const tMax = 0.4;       // Timpul maxim de simulare (s)
+        const dt = 0.0005;      // Pasul de integrare
+
+        // Inițializarea graficului
+        const ctx = document.getElementById('rlcChart').getContext('2d');
+        Chart.defaults.color = '#a0a0a0';
+        Chart.defaults.font.family = "'Segoe UI', sans-serif";
+
+        let rlcChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Tensiune condensator uC(t)',
+                    data: [],
+                    borderColor: '#00e5ff',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false, // Dezactivăm animația pentru actualizări fluide
+                scales: {
+                    x: {
+                        title: { display: true, text: 'Timp (secunde)', font: { size: 14 } },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                        ticks: { maxTicksLimit: 10 }
+                    },
+                    y: {
+                        title: { display: true, text: 'Tensiune (V)', font: { size: 14 } },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                        min: -40,
+                        max: 40
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) { return context.parsed.y.toFixed(2) + ' V'; }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Funcția principală de calcul și actualizare
+        function updateSimulation() {
+            const R = parseFloat(document.getElementById('rSlider').value);
+            document.getElementById('rValue').textContent = R;
+
+            let t = 0;
+            let uc = 0;
+            let duc = 0;
+
+            const timpi = [];
+            const tensiuni = [];
+            let peakVoltage = 0;
+
+            // Ecuația diferențială
+            function f(t, uc, duc) {
+                return (Um * Math.cos(w * t) - R * C * duc - uc) / (L * C);
+            }
+
+            // Metoda Runge-Kutta 4
+            while (t <= tMax) {
+                timpi.push(parseFloat(t.toFixed(4)));
+                tensiuni.push(uc);
+
+                if (Math.abs(uc) > peakVoltage) {
+                    peakVoltage = Math.abs(uc);
+                }
+
+                let k1_uc = duc;
+                let k1_duc = f(t, uc, duc);
+
+                let k2_uc = duc + 0.5 * dt * k1_duc;
+                let k2_duc = f(t + 0.5 * dt, uc + 0.5 * dt * k1_uc, duc + 0.5 * dt * k1_duc);
+
+                let k3_uc = duc + 0.5 * dt * k2_duc;
+                let k3_duc = f(t + 0.5 * dt, uc + 0.5 * dt * k2_uc, duc + 0.5 * dt * k2_duc);
+
+                let k4_uc = duc + dt * k3_duc;
+                let k4_duc = f(t + dt, uc + dt * k3_uc, duc + dt * k3_duc);
+
+                uc += (dt / 6.0) * (k1_uc + 2 * k2_uc + 2 * k3_uc + k4_uc);
+                duc += (dt / 6.0) * (k1_duc + 2 * k2_duc + 2 * k3_duc + k4_duc);
+                t += dt;
+            }
+
+            // Calcul teoretic pentru amplitudinea permanentă
+            const Xl = w * L;
+            const Xc = 1 / (w * C);
+            const Z = Math.sqrt(R * R + Math.pow(Xl - Xc, 2));
+            const Imax = Um / Z;
+            const Ucp = Imax * Xc;
+
+            // Actualizare interfață
+            document.getElementById('vPeak').textContent = peakVoltage.toFixed(2);
+            document.getElementById('vPerm').textContent = Ucp.toFixed(2);
+
+            // Actualizare grafic
+            rlcChart.data.labels = timpi;
+            rlcChart.data.datasets[0].data = tensiuni;
+            rlcChart.update();
+        }
+
+        // Ascultăm evenimentul de mișcare a slider-ului
+        document.getElementById('rSlider').addEventListener('input', updateSimulation);
+
+        // Rulăm simularea inițială la încărcarea paginii
+        updateSimulation();
+    </script>
+</body>
+</html>

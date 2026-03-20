@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulare circuit RLC serie</title>
+    <style>
+        body { font-family: sans-serif; background-color: #f4f4f9; color: #333; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 900px; width: 100%; display: flex; flex-wrap: wrap; gap: 20px; }
+        .controls { flex: 1; min-width: 300px; display: flex; flex-direction: column; gap: 15px; }
+        .visuals { flex: 2; min-width: 450px; display: flex; flex-direction: column; gap: 20px; align-items: center; }
+        canvas { border: 1px solid #ccc; border-radius: 4px; background: #fafafa; }
+        label { font-weight: bold; display: flex; justify-content: space-between; margin-bottom: 5px;}
+        input[type=range] { width: 100%; }
+        .stats { background: #eef; padding: 15px; border-radius: 4px; border-left: 4px solid #f39c12; }
+        .stats p { margin: 5px 0; font-size: 14px; }
+        .resonance-warning { color: #d35400; font-weight: bold; background: #ffeaa7; padding: 5px; border-radius: 3px; display: none; text-align: center; }
+        button { padding: 10px 15px; font-size: 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        h2, h3 { margin-top: 0; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="controls">
+            <h2>Parametri circuit RLC</h2>
+            
+            <div>
+                <label>Frecvență (f): <span id="f-val">50 Hz</span></label>
+                <input type="range" id="f" min="10" max="150" value="50">
+            </div>
+            <div>
+                <label>Rezistență (R): <span id="r-val">20 Ω</span></label>
+                <input type="range" id="r" min="5" max="100" step="1" value="20">
+            </div>
+            <div>
+                <label>Inductanță (L): <span id="l-val">0.10 H</span></label>
+                <input type="range" id="l" min="0.01" max="0.3" step="0.01" value="0.1">
+            </div>
+            <div>
+                <label>Capacitate (C): <span id="c-val">100 µF</span></label>
+                <input type="range" id="c" min="10" max="500" step="10" value="100">
+            </div>
+            <div>
+                <label>Tensiune sursă (U): <span id="u-val">10.0 V</span></label>
+                <input type="range" id="u" min="1" max="50" step="0.5" value="10">
+            </div>
+            
+            <div class="stats">
+                <p><b>f<sub>0</sub> (Frecvență rezonanță):</b> <span id="f0-out">50.33</span> Hz</p>
+                <p><b>X<sub>L</sub> (React. ind.):</b> <span id="xl-out">31.42</span> Ω</p>
+                <p><b>X<sub>C</sub> (React. cap.):</b> <span id="xc-out">31.83</span> Ω</p>
+                <p><b>Z (Impedanță):</b> <span id="z-out">20.00</span> Ω</p>
+                <p><b>I (Curent max):</b> <span id="i-out">0.50</span> A</p>
+                <p><b>φ (Defazaj U față de I):</b> <span id="phi-out">-1.2</span>°</p>
+            </div>
+            <div id="resonance-msg" class="resonance-warning">Rezonanță! Tensiunile pe L și C sunt imense!</div>
+
+            <button id="play-pause">Pauză / Redare</button>
+        </div>
+
+        <div class="visuals">
+            <div>
+                <h3 style="text-align: center;">Planul complex (Triunghiul tensiunilor)</h3>
+                <canvas id="phasorCanvas" width="450" height="350"></canvas>
+            </div>
+            <div>
+                <h3 style="text-align: center;">Domeniul timp (Unde U și I)</h3>
+                <canvas id="waveCanvas" width="450" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvasP = document.getElementById('phasorCanvas');
+        const ctxP = canvasP.getContext('2d');
+        const canvasW = document.getElementById('waveCanvas');
+        const ctxW = canvasW.getContext('2d');
+
+        const fSlider = document.getElementById('f');
+        const rSlider = document.getElementById('r');
+        const lSlider = document.getElementById('l');
+        const cSlider = document.getElementById('c');
+        const uSlider = document.getElementById('u');
+        const btn = document.getElementById('play-pause');
+
+        let isPlaying = true;
+        let time = 0;
+        let waveHistoryI = [];
+        let waveHistoryU = [];
+
+        btn.addEventListener('click', () => { isPlaying = !isPlaying; });
+
+        function updateOutputs(f, R, L, C_uF, U) {
+            document.getElementById('f-val').innerText = f + ' Hz';
+            document.getElementById('r-val').innerText = R + ' Ω';
+            document.getElementById('l-val').innerText = L.toFixed(2) + ' H';
+            document.getElementById('c-val').innerText = C_uF + ' µF';
+            document.getElementById('u-val').innerText = U.toFixed(1) + ' V';
+            
+            let w = 2 * Math.PI * f;
+            let C = C_uF * 1e-6;
+            
+            let f0 = 1 / (2 * Math.PI * Math.sqrt(L * C));
+            let xl = w * L;
+            let xc = 1 / (w * C);
+            let xtotal = xl - xc;
+            let z = Math.sqrt(R * R + xtotal * xtotal);
+            let i = U / z;
+            
+            let phi_rad = Math.atan2(xtotal, R);
+            let phi_deg = phi_rad * (180 / Math.PI);
+
+            document.getElementById('f0-out').innerText = f0.toFixed(2);
+            document.getElementById('xl-out').innerText = xl.toFixed(2);
+            document.getElementById('xc-out').innerText = xc.toFixed(2);
+            document.getElementById('z-out').innerText = z.toFixed(2);
+            document.getElementById('i-out').innerText = i.toFixed(2);
+            document.getElementById('phi-out').innerText = phi_deg.toFixed(1);
+
+            // Afișare mesaj rezonanță
+            let msg = document.getElementById('resonance-msg');
+            if (Math.abs(f - f0) < 2) {
+                msg.style.display = 'block';
+            } else {
+                msg.style.display = 'none';
+            }
+
+            return { w, xl, xc, xtotal, z, u_total: U, phi_rad, u_r: i * R, u_l: i * xl, u_c: i * xc, current: i };
+        }
+
+        function drawAxes(ctx, width, height, isWave = false) {
+            ctx.beginPath();
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 1;
+            ctx.moveTo(0, height / 2);
+            ctx.lineTo(width, height / 2);
+            if(isWave) {
+                ctx.moveTo(50, 0);
+                ctx.lineTo(50, height);
+            } else {
+                ctx.moveTo(width / 2, 0);
+                ctx.lineTo(width / 2, height);
+            }
+            ctx.stroke();
+        }
+
+        function drawArrow(ctx, fromx, fromy, tox, toy, color, label) {
+            let headlen = 8; 
+            let dx = tox - fromx;
+            let dy = toy - fromy;
+            let angle = Math.atan2(dy, dx);
+            
+            if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) return; // Vector prea mic
+            
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2.5;
+            ctx.moveTo(fromx, fromy);
+            ctx.lineTo(tox, toy);
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.fillStyle = color;
+            ctx.moveTo(tox, toy);
+            ctx.lineTo(tox - headlen * Math.cos(angle - Math.PI / 6), toy - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(tox - headlen * Math.cos(angle + Math.PI / 6), toy - headlen * Math.sin(angle + Math.PI / 6));
+            ctx.fill();
+
+            if (label) {
+                ctx.font = "bold 12px Arial";
+                ctx.fillText(label, tox + 5, toy);
+            }
+        }
+
+        function animate() {
+            if (!isPlaying) {
+                requestAnimationFrame(animate);
+                return;
+            }
+
+            let f = parseFloat(fSlider.value);
+            let R = parseFloat(rSlider.value);
+            let L = parseFloat(lSlider.value);
+            let C = parseFloat(cSlider.value);
+            let U = parseFloat(uSlider.value);
+            
+            let params = updateOutputs(f, R, L, C, U);
+
+            // Pentru vizibilitate, calculăm vectorul maxim pe ecran
+            let maxVector = Math.max(params.u_total, params.u_r, params.u_l, params.u_c);
+            let scaleP = 150 / Math.max(maxVector, 1); 
+            
+            ctxP.clearRect(0, 0, canvasP.width, canvasP.height);
+            drawAxes(ctxP, canvasP.width, canvasP.height);
+            
+            let cx = canvasP.width / 2;
+            let cy = canvasP.height / 2;
+            
+            let angleI = -params.w * time * 0.005; 
+            let angleU = angleI - params.phi_rad; 
+
+            // UR (Verde, referința I)
+            let ur_x = cx + params.u_r * scaleP * Math.cos(angleI);
+            let ur_y = cy + params.u_r * scaleP * Math.sin(angleI);
+            drawArrow(ctxP, cx, cy, ur_x, ur_y, '#27ae60', 'UR');
+
+            // UL (Portocaliu, +90 din varful UR)
+            let ul_x = ur_x + params.u_l * scaleP * Math.cos(angleI - Math.PI/2);
+            let ul_y = ur_y + params.u_l * scaleP * Math.sin(angleI - Math.PI/2);
+            drawArrow(ctxP, ur_x, ur_y, ul_x, ul_y, '#d35400', 'UL');
+
+            // UC (Mov, -90 din varful UL - practic coboara pe acceasi linie)
+            let uc_x = ul_x + params.u_c * scaleP * Math.cos(angleI + Math.PI/2);
+            let uc_y = ul_y + params.u_c * scaleP * Math.sin(angleI + Math.PI/2);
+            drawArrow(ctxP, ul_x, ul_y, uc_x, uc_y, '#8e44ad', 'UC');
+
+            // U Total (Roșu, din origine in varful lui UC)
+            drawArrow(ctxP, cx, cy, uc_x, uc_y, 'red', 'U_tot');
+
+            // --- Unde Domeniul Timp ---
+            let scaleW_U = 80 / Math.max(params.u_total, 1);
+            // Pentru a mentine ambele curbe proportionale fixam scala maxima posibila a curentului: U / R
+            let iMaxPossible = U / R; 
+            let scaleW_I = 80 / Math.max(iMaxPossible, 0.1);
+
+            ctxW.clearRect(0, 0, canvasW.width, canvasW.height);
+            drawAxes(ctxW, canvasW.width, canvasW.height, true);
+
+            let waveY_I = canvasW.height / 2 + params.current * scaleW_I * Math.sin(angleI);
+            let waveY_U = canvasW.height / 2 + params.u_total * scaleW_U * Math.sin(angleU);
+
+            waveHistoryI.unshift(waveY_I);
+            waveHistoryU.unshift(waveY_U);
+
+            if (waveHistoryI.length > canvasW.width - 50) {
+                waveHistoryI.pop();
+                waveHistoryU.pop();
+            }
+
+            ctxW.lineWidth = 2;
+            
+            ctxW.beginPath();
+            ctxW.strokeStyle = 'blue';
+            for (let j = 0; j < waveHistoryI.length; j++) { ctxW.lineTo(50 + j, waveHistoryI[j]); }
+            ctxW.stroke();
+
+            ctxW.beginPath();
+            ctxW.strokeStyle = 'red';
+            for (let j = 0; j < waveHistoryU.length; j++) { ctxW.lineTo(50 + j, waveHistoryU[j]); }
+            ctxW.stroke();
+
+            time += 0.05;
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
